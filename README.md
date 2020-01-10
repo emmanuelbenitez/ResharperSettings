@@ -1,0 +1,2 @@
+# ResharperSettings
+Settings for Resharper
