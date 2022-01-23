@@ -21,7 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE. */
 
 using System;
-// ReSharper disable InheritdocConsiderUsage
+// ReSharper disable UnusedType.Global
 
 #pragma warning disable 1591
 // ReSharper disable UnusedMember.Global
@@ -106,7 +106,7 @@ namespace JetBrains.Annotations
 
     /// <summary>
     /// Indicates that the marked method builds string by the format pattern and (optional) arguments.
-    /// The parameter, which contains the format string, should be given in constructor. The format string
+    /// The parameter, which contains the format string, should be given in the constructor. The format string
     /// should be in <see cref="string.Format(IFormatProvider,string,object[])"/>-like form.
     /// </summary>
     /// <example><code>
@@ -132,6 +132,20 @@ namespace JetBrains.Annotations
 
         [NotNull] public string FormatParameterName { get; }
     }
+
+    /// <summary>
+    /// Indicates that the marked parameter is a message template where placeholders are to be replaced by the following arguments
+    /// in the order in which they appear
+    /// </summary>
+    /// <example><code>
+    /// void LogInfo([StructuredMessageTemplate]string message, params object[] args) { /* do something */ }
+    /// 
+    /// void Foo() {
+    ///   LogInfo("User created: {username}"); // Warning: Non-existing argument in format string
+    /// }
+    /// </code></example>
+    [AttributeUsage(AttributeTargets.Parameter)]
+    internal sealed class StructuredMessageTemplateAttribute : Attribute { }
 
     /// <summary>
     /// Use this annotation to specify a type that contains static or const fields
@@ -313,7 +327,7 @@ namespace JetBrains.Annotations
     /// means that the method doesn't return normally (throws or terminates the process).<br/>
     /// Value <c>canbenull</c> is only applicable for output parameters.<br/>
     /// You can use multiple <c>[ContractAnnotation]</c> for each FDT row, or use single attribute
-    /// with rows separated by semicolon. There is no notion of order rows, all rows are checked
+    /// with rows separated by the semicolon. There is no notion of order rows, all rows are checked
     /// for applicability and applied per each program state tracked by the analysis engine.<br/>
     /// </syntax>
     /// <examples><list>
@@ -427,8 +441,23 @@ namespace JetBrains.Annotations
 
     /// <summary>
     /// Indicates that the marked symbol is used implicitly (e.g. via reflection, in external library),
-    /// so this symbol will not be reported as unused (as well as by other usage inspections).
+    /// so this symbol will be ignored by usage-checking inspections. <br/>
+    /// You can use <see cref="ImplicitUseKindFlags"/> and <see cref="ImplicitUseTargetFlags"/>
+    /// to configure how this attribute is applied.
     /// </summary>
+    /// <example><code>
+    /// [UsedImplicitly]
+    /// public class TypeConverter {}
+    /// 
+    /// public class SummaryData
+    /// {
+    ///   [UsedImplicitly(ImplicitUseKindFlags.InstantiatedWithFixedConstructorSignature)]
+    ///   public SummaryData() {}
+    /// }
+    /// 
+    /// [UsedImplicitly(ImplicitUseTargetFlags.WithInheritors | ImplicitUseTargetFlags.Default)]
+    /// public interface IService {}
+    /// </code></example>
     [AttributeUsage(AttributeTargets.All)]
     internal sealed class UsedImplicitlyAttribute : Attribute
     {
@@ -455,8 +484,8 @@ namespace JetBrains.Annotations
     /// <summary>
     /// Can be applied to attributes, type parameters, and parameters of a type assignable from <see cref="System.Type"/> .
     /// When applied to an attribute, the decorated attribute behaves the same as <see cref="UsedImplicitlyAttribute"/>.
-    /// When applied to a type parameter or to a parameter of type <see cref="System.Type"/>,  indicates that the corresponding type
-    /// is used implicitly.
+    /// When applied to a type parameter or to a parameter of type <see cref="System.Type"/>,
+    /// indicates that the corresponding type is used implicitly.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.GenericParameter | AttributeTargets.Parameter)]
     internal sealed class MeansImplicitUseAttribute : Attribute
@@ -482,7 +511,7 @@ namespace JetBrains.Annotations
     }
 
     /// <summary>
-    /// Specify the details of implicitly used symbol when it is marked
+    /// Specifies the details of implicitly used symbol when it is marked
     /// with <see cref="MeansImplicitUseAttribute"/> or <see cref="UsedImplicitlyAttribute"/>.
     /// </summary>
     [Flags]
@@ -503,7 +532,7 @@ namespace JetBrains.Annotations
     }
 
     /// <summary>
-    /// Specify what is considered to be used implicitly when marked
+    /// Specifies what is considered to be used implicitly when marked
     /// with <see cref="MeansImplicitUseAttribute"/> or <see cref="UsedImplicitlyAttribute"/>.
     /// </summary>
     [Flags]
@@ -511,16 +540,16 @@ namespace JetBrains.Annotations
     {
         Default = Itself,
         Itself = 1,
-        /// <summary>Members of entity marked with attribute are considered used.</summary>
+        /// <summary>Members of the type marked with the attribute are considered used.</summary>
         Members = 2,
         /// <summary> Inherited entities are considered used. </summary>
         WithInheritors = 4,
-        /// <summary>Entity marked with attribute and all its members considered used.</summary>
+        /// <summary>Entity marked with the attribute and all its members considered used.</summary>
         WithMembers = Itself | Members
     }
 
     /// <summary>
-    /// This attribute is intended to mark publicly available API
+    /// This attribute is intended to mark publicly available API,
     /// which should not be removed and so is treated as used.
     /// </summary>
     [MeansImplicitUse(ImplicitUseTargetFlags.WithMembers)]
@@ -538,12 +567,22 @@ namespace JetBrains.Annotations
     }
 
     /// <summary>
-    /// Tells code analysis engine if the parameter is completely handled when the invoked method is on stack.
-    /// If the parameter is a delegate, indicates that delegate is executed while the method is executed.
+    /// Tells the code analysis engine if the parameter is completely handled when the invoked method is on stack.
+    /// If the parameter is a delegate, indicates that delegate can only be invoked during method execution
+    /// (the delegate can be invoked zero or multiple times, but not stored to some field and invoked later,
+    /// when the containing method is no longer on the execution stack).
     /// If the parameter is an enumerable, indicates that it is enumerated while the method is executed.
+    /// If <see cref="RequireAwait"/> is true, the attribute will only takes effect if the method invocation is located under the 'await' expression.
     /// </summary>
     [AttributeUsage(AttributeTargets.Parameter)]
-    internal sealed class InstantHandleAttribute : Attribute { }
+    internal sealed class InstantHandleAttribute : Attribute
+    {
+        /// <summary>
+        /// Require the method invocation to be used under the 'await' expression for this attribute to take effect on code analysis engine.
+        /// Can be used for delegate/enumerable parameters of 'async' methods.
+        /// </summary>
+        public bool RequireAwait { get; set; }
+    }
 
     /// <summary>
     /// Indicates that a method does not make any observable state changes.
@@ -566,8 +605,8 @@ namespace JetBrains.Annotations
     /// Methods decorated with this attribute (in contrast to pure methods) might change state,
     /// but make no sense without using their return value. <br/>
     /// Similarly to <see cref="PureAttribute"/>, this attribute
-    /// will help detecting usages of the method when the return value in not used.
-    /// Additionally, you can optionally specify a custom message, which will be used when showing warnings, e.g.
+    /// will help to detect usages of the method when the return value is not used.
+    /// Optionally, you can specify a message to use when showing warnings, e.g.
     /// <code>[MustUseReturnValue("Use the return value to...")]</code>.
     /// </remarks>
     [AttributeUsage(AttributeTargets.Method)]
@@ -581,6 +620,25 @@ namespace JetBrains.Annotations
         }
 
         [CanBeNull] public string Justification { get; }
+    }
+
+    /// <summary>
+    /// This annotation allows to enforce allocation-less usage patterns of delegates for performance-critical APIs.
+    /// When this annotation is applied to the parameter of delegate type, IDE checks the input argument of this parameter:
+    /// * When lambda expression or anonymous method is passed as an argument, IDE verifies that the passed closure
+    ///   has no captures of the containing local variables and the compiler is able to cache the delegate instance
+    ///   to avoid heap allocations. Otherwise the warning is produced.
+    /// * IDE warns when method name or local function name is passed as an argument as this always results
+    ///   in heap allocation of the delegate instance.
+    /// </summary>
+    /// <remarks>
+    /// In C# 9.0 code IDE would also suggest to annotate the anonymous function with 'static' modifier
+    /// to make use of the similar analysis provided by the language/compiler.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Parameter)]
+    internal class RequireStaticDelegateAttribute : Attribute
+    {
+        public bool IsError { get; set; }
     }
 
     /// <summary>
@@ -947,6 +1005,9 @@ namespace JetBrains.Annotations
     /// <summary>
     /// Indicates how method, constructor invocation, or property access
     /// over collection type affects the contents of the collection.
+    /// When applied to a return value of a method indicates if the returned collection
+    /// is created exclusively for the caller (CollectionAccessType.UpdatedContent) or
+    /// can be read/updated from outside (CollectionAccessType.Read | CollectionAccessType.UpdatedContent)
     /// Use <see cref="CollectionAccessType"/> to specify the access type.
     /// </summary>
     /// <remarks>
@@ -971,7 +1032,7 @@ namespace JetBrains.Annotations
     ///   }
     /// }
     /// </code></example>
-    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor | AttributeTargets.Property)]
+    [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor | AttributeTargets.Property | AttributeTargets.ReturnValue)]
     internal sealed class CollectionAccessAttribute : Attribute
     {
         public CollectionAccessAttribute(CollectionAccessType collectionAccessType)
@@ -1048,7 +1109,7 @@ namespace JetBrains.Annotations
     internal sealed class TerminatesProgramAttribute : Attribute { }
 
     /// <summary>
-    /// Indicates that method is pure LINQ method, with postponed enumeration (like Enumerable.Select,
+    /// Indicates that the method is a pure LINQ method, with postponed enumeration (like Enumerable.Select,
     /// .Where). This annotation allows inference of [InstantHandle] annotation for parameters
     /// of delegate type by analyzing LINQ method chains.
     /// </summary>
@@ -1075,10 +1136,48 @@ namespace JetBrains.Annotations
     internal sealed class NoEnumerationAttribute : Attribute { }
 
     /// <summary>
-    /// Indicates that the marked parameter is a regular expression pattern.
+    /// Indicates that the marked parameter, field, or property is a regular expression pattern.
     /// </summary>
     [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Field | AttributeTargets.Property)]
     internal sealed class RegexPatternAttribute : Attribute { }
+
+    /// <summary>
+    /// Language of injected code fragment inside marked by <see cref="LanguageInjectionAttribute"/> string literal.
+    /// </summary>
+    internal enum InjectedLanguage
+    {
+        CSS,
+        HTML,
+        JAVASCRIPT,
+        JSON,
+        XML
+    }
+
+    /// <summary>
+    /// Indicates that the marked parameter, field, or property is accepting a string literal
+    /// containing code fragment in a language specified by the <see cref="InjectedLanguage"/>.
+    /// </summary>
+    /// <example><code>
+    /// void Foo([LanguageInjection(InjectedLanguage.CSS, Prefix = "body{", Suffix = "}")] string cssProps)
+    /// {
+    ///   // cssProps should only contains a list of CSS properties
+    /// }
+    /// </code></example>
+    [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Field | AttributeTargets.Property)]
+    internal sealed class LanguageInjectionAttribute : Attribute
+    {
+        public LanguageInjectionAttribute(InjectedLanguage injectedLanguage)
+        {
+            InjectedLanguage = injectedLanguage;
+        }
+
+        /// <summary>Specify a language of injected code fragment.</summary>
+        public InjectedLanguage InjectedLanguage { get; }
+        /// <summary>Specify a string that "precedes" injected string literal.</summary>
+        [CanBeNull] public string Prefix { get; set; }
+        /// <summary>Specify a string that "follows" injected string literal.</summary>
+        [CanBeNull] public string Suffix { get; set; }
+    }
 
     /// <summary>
     /// Prevents the Member Reordering feature from tossing members of the marked class.
@@ -1120,6 +1219,24 @@ namespace JetBrains.Annotations
     /// </remarks>
     [AttributeUsage(AttributeTargets.Property)]
     internal sealed class XamlItemStyleOfItemsControlAttribute : Attribute { }
+
+    /// <summary>
+    /// XAML attribute. Indicates that DependencyProperty has <c>OneWay</c> binding mode by default.
+    /// </summary>
+    /// <remarks>
+    /// This attribute must be applied to DependencyProperty's CLR accessor property if it is present, to DependencyProperty descriptor field otherwise.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    internal sealed class XamlOneWayBindingModeByDefaultAttribute : Attribute { }
+
+    /// <summary>
+    /// XAML attribute. Indicates that DependencyProperty has <c>TwoWay</c> binding mode by default.
+    /// </summary>
+    /// <remarks>
+    /// This attribute must be applied to DependencyProperty's CLR accessor property if it is present, to DependencyProperty descriptor field otherwise.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    internal sealed class XamlTwoWayBindingModeByDefaultAttribute : Attribute { }
 
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
     internal sealed class AspChildControlTypeAttribute : Attribute
@@ -1233,4 +1350,254 @@ namespace JetBrains.Annotations
 
     [AttributeUsage(AttributeTargets.Parameter)]
     internal sealed class RazorWriteMethodParameterAttribute : Attribute { }
+
+    /// <summary>
+    /// Indicates that the marked parameter, field, or property is a route template.
+    /// </summary>
+    /// <remarks>
+    /// This attribute allows IDE to recognize the use of web frameworks' route templates
+    /// to enable syntax highlighting, code completion, navigation, rename and other features in string literals.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Field | AttributeTargets.Property)]
+    internal sealed class RouteTemplateAttribute : Attribute { }
+
+    /// <summary>
+    /// Indicates that the marked type is custom route parameter constraint,
+    /// which is registered in application's Startup with name <c>ConstraintName</c>
+    /// </summary>
+    /// <remarks>
+    /// You can specify <c>ProposedType</c> if target constraint matches only route parameters of specific type,
+    /// it will allow IDE to create method's parameter from usage in route template
+    /// with specified type instead of default <c>System.String</c>
+    /// and check if constraint's proposed type conflicts with matched parameter's type
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Class)]
+    internal sealed class RouteParameterConstraintAttribute : Attribute
+    {
+        [NotNull] public string ConstraintName { get; }
+        [CanBeNull] public Type ProposedType { get; set; }
+
+        public RouteParameterConstraintAttribute([NotNull] string constraintName)
+        {
+            ConstraintName = constraintName;
+        }
+    }
+
+    /// <summary>
+    /// Indicates that the marked parameter, field, or property is an URI string.
+    /// </summary>
+    /// <remarks>
+    /// This attribute enables code completion, navigation, rename and other features
+    /// in URI string literals assigned to annotated parameter, field or property.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Field | AttributeTargets.Property)]
+    internal sealed class UriStringAttribute : Attribute
+    {
+        public UriStringAttribute() { }
+
+        public UriStringAttribute(string httpVerb)
+        {
+            HttpVerb = httpVerb;
+        }
+
+        [CanBeNull] public string HttpVerb { get; }
+    }
+
+    /// <summary>
+    /// <para>
+    /// Defines the code search template using the Structural Search and Replace syntax.
+    /// It allows you to find and, if necessary, replace blocks of code that match a specific pattern.
+    /// Search and replace patterns consist of a textual part and placeholders.
+    /// Textural part must contain only identifiers allowed in the target language and will be matched exactly (white spaces, tabulation characters, and line breaks are ignored).
+    /// Placeholders allow matching variable parts of the target code blocks.
+    /// A placeholder has the following format: $placeholder_name$- where placeholder_name is an arbitrary identifier.
+    /// </para>
+    /// <para>
+    /// Available placeholders:
+    /// <list type="bullet">
+    /// <item>$this$ - expression of containing type</item>
+    /// <item>$thisType$ - containing type</item>
+    /// <item>$member$ - current member placeholder</item>
+    /// <item>$qualifier$ - this placeholder is available in the replace pattern and can be used to insert qualifier expression matched by the $member$ placeholder.
+    /// (Note that if $qualifier$ placeholder is used, then $member$ placeholder will match only qualified references)</item>
+    /// <item>$expression$ - expression of any type</item>
+    /// <item>$identifier$ - identifier placeholder</item>
+    /// <item>$args$ - any number of arguments</item>
+    /// <item>$arg$ - single argument</item>
+    /// <item>$arg1$ ... $arg10$ - single argument</item>
+    /// <item>$stmts$ - any number of statements</item>
+    /// <item>$stmt$ - single statement</item>
+    /// <item>$stmt1$ ... $stmt10$ - single statement</item>
+    /// <item>$name{Expression, 'Namespace.FooType'}$ - expression with 'Namespace.FooType' type</item>
+    /// <item>$expression{'Namespace.FooType'}$ - expression with 'Namespace.FooType' type</item>
+    /// <item>$name{Type, 'Namespace.FooType'}$ - 'Namespace.FooType' type</item>
+    /// <item>$type{'Namespace.FooType'}$ - 'Namespace.FooType' type</item>
+    /// <item>$statement{1,2}$ - 1 or 2 statements</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Note that you can also define your own placeholders of the supported types and specify arguments for each placeholder type.
+    /// This can be done using the following format: $name{type, arguments}$. Where 'name' - is the name of your placeholder,
+    /// 'type' - is the type of your placeholder (one of the following: Expression, Type, Identifier, Statement, Argument, Member),
+    /// 'arguments' - arguments list for your placeholder. Each placeholder type supports it's own arguments, check examples below for mode details.
+    /// Placeholder type may be omitted and determined from the placeholder name, if name has one of the following prefixes:
+    /// <list type="bullet">
+    /// <item>expr, expression - expression placeholder, e.g. $exprPlaceholder{}$, $expressionFoo{}$</item>
+    /// <item>arg, argument - argument placeholder, e.g. $argPlaceholder{}$, $argumentFoo{}$</item>
+    /// <item>ident, identifier - identifier placeholder, e.g. $identPlaceholder{}$, $identifierFoo{}$</item>
+    /// <item>stmt, statement - statement placeholder, e.g. $stmtPlaceholder{}$, $statementFoo{}$</item>
+    /// <item>type - type placeholder, e.g. $typePlaceholder{}$, $typeFoo{}$</item>
+    /// <item>member - member placeholder, e.g. $memberPlaceholder{}$, $memberFoo{}$</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Expression placeholder arguments:
+    /// <list type="bullet">
+    /// <item>expressionType - string value in single quotes, specifies full type name to match (empty string by default)</item>
+    /// <item>exactType - boolean value, specifies if expression should have exact type match (false by default)</item>
+    /// </list>
+    /// Examples:
+    /// <list type="bullet">
+    /// <item>$myExpr{Expression, 'Namespace.FooType', true}$ - defines expression placeholder, matching expressions of the 'Namespace.FooType' type with exact matching.</item>
+    /// <item>$myExpr{Expression, 'Namespace.FooType'}$ - defines expression placeholder, matching expressions of the 'Namespace.FooType' type or expressions which can be implicitly converted to 'Namespace.FooType'.</item>
+    /// <item>$myExpr{Expression}$ - defines expression placeholder, matching expressions of any type.</item>
+    /// <item>$exprFoo{'Namespace.FooType', true}$ - defines expression placeholder, matching expressions of the 'Namespace.FooType' type with exact matching.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Type placeholder arguments:
+    /// <list type="bullet">
+    /// <item>type - string value in single quotes, specifies full type name to match (empty string by default)</item>
+    /// <item>exactType - boolean value, specifies if expression should have exact type match (false by default)</item>
+    /// </list>
+    /// Examples:
+    /// <list type="bullet">
+    /// <item>$myType{Type, 'Namespace.FooType', true}$ - defines type placeholder, matching 'Namespace.FooType' types with exact matching.</item>
+    /// <item>$myType{Type, 'Namespace.FooType'}$ - defines type placeholder, matching 'Namespace.FooType' types or types, which can be implicitly converted to 'Namespace.FooType'.</item>
+    /// <item>$myType{Type}$ - defines type placeholder, matching any type.</item>
+    /// <item>$typeFoo{'Namespace.FooType', true}$ - defines types placeholder, matching 'Namespace.FooType' types with exact matching.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Identifier placeholder arguments:
+    /// <list type="bullet">
+    /// <item>nameRegex - string value in single quotes, specifies regex to use for matching (empty string by default)</item>
+    /// <item>nameRegexCaseSensitive - boolean value, specifies if name regex is case sensitive (true by default)</item>
+    /// <item>type - string value in single quotes, specifies full type name to match (empty string by default)</item>
+    /// <item>exactType - boolean value, specifies if expression should have exact type match (false by default)</item>
+    /// </list>
+    /// Examples:
+    /// <list type="bullet">
+    /// <item>$myIdentifier{Identifier, 'my.*', false, 'Namespace.FooType', true}$ - defines identifier placeholder, matching identifiers (ignoring case) starting with 'my' prefix with 'Namespace.FooType' type.</item>
+    /// <item>$myIdentifier{Identifier, 'my.*', true, 'Namespace.FooType', true}$ - defines identifier placeholder, matching identifiers (case sensitively) starting with 'my' prefix with 'Namespace.FooType' type.</item>
+    /// <item>$identFoo{'my.*'}$ - defines identifier placeholder, matching identifiers (case sensitively) starting with 'my' prefix.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Statement placeholder arguments:
+    /// <list type="bullet">
+    /// <item>minimalOccurrences - minimal number of statements to match (-1 by default)</item>
+    /// <item>maximalOccurrences - maximal number of statements to match (-1 by default)</item>
+    /// </list>
+    /// Examples:
+    /// <list type="bullet">
+    /// <item>$myStmt{Statement, 1, 2}$ - defines statement placeholder, matching 1 or 2 statements.</item>
+    /// <item>$myStmt{Statement}$ - defines statement placeholder, matching any number of statements.</item>
+    /// <item>$stmtFoo{1, 2}$ - defines statement placeholder, matching 1 or 2 statements.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Argument placeholder arguments:
+    /// <list type="bullet">
+    /// <item>minimalOccurrences - minimal number of arguments to match (-1 by default)</item>
+    /// <item>maximalOccurrences - maximal number of arguments to match (-1 by default)</item>
+    /// </list>
+    /// Examples:
+    /// <list type="bullet">
+    /// <item>$myArg{Argument, 1, 2}$ - defines argument placeholder, matching 1 or 2 arguments.</item>
+    /// <item>$myArg{Argument}$ - defines argument placeholder, matching any number of arguments.</item>
+    /// <item>$argFoo{1, 2}$ - defines argument placeholder, matching 1 or 2 arguments.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Member placeholder arguments:
+    /// <list type="bullet">
+    /// <item>docId - string value in single quotes, specifies XML documentation id of the member to match (empty by default)</item>
+    /// </list>
+    /// Examples:
+    /// <list type="bullet">
+    /// <item>$myMember{Member, 'M:System.String.IsNullOrEmpty(System.String)'}$ - defines member placeholder, matching 'IsNullOrEmpty' member of the 'System.String' type.</item>
+    /// <item>$memberFoo{'M:System.String.IsNullOrEmpty(System.String)'}$ - defines member placeholder, matching 'IsNullOrEmpty' member of the 'System.String' type.</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// For more information please refer to the <a href="https://www.jetbrains.com/help/resharper/Navigation_and_Search__Structural_Search_and_Replace.html">Structural Search and Replace</a> article.
+    /// </para>
+    /// </summary>
+    [AttributeUsage(
+      AttributeTargets.Method
+      | AttributeTargets.Constructor
+      | AttributeTargets.Property
+      | AttributeTargets.Field
+      | AttributeTargets.Event
+      | AttributeTargets.Interface
+      | AttributeTargets.Class
+      | AttributeTargets.Struct
+      | AttributeTargets.Enum,
+      AllowMultiple = true,
+      Inherited = false)]
+    internal sealed class CodeTemplateAttribute : Attribute
+    {
+        public CodeTemplateAttribute(string searchTemplate)
+        {
+            SearchTemplate = searchTemplate;
+        }
+
+        /// <summary>
+        /// Structural search pattern to use in the code template.
+        /// Pattern includes textual part, which must contain only identifiers allowed in the target language,
+        /// and placeholders, which allow matching variable parts of the target code blocks.
+        /// </summary>
+        public string SearchTemplate { get; }
+
+        /// <summary>
+        /// Message to show when the search pattern was found.
+        /// You can also prepend the message text with "Error:", "Warning:", "Suggestion:" or "Hint:" prefix to specify the pattern severity.
+        /// Code patterns with replace template produce suggestions by default.
+        /// However, if replace template is not provided, then warning severity will be used.
+        /// </summary>
+        public string Message { get; set; }
+
+        /// <summary>
+        /// Structural search replace pattern to use in code template replacement.
+        /// </summary>
+        public string ReplaceTemplate { get; set; }
+
+        /// <summary>
+        /// Replace message to show in the light bulb.
+        /// </summary>
+        public string ReplaceMessage { get; set; }
+
+        /// <summary>
+        /// Apply code formatting after code replacement.
+        /// </summary>
+        public bool FormatAfterReplace { get; set; } = true;
+
+        /// <summary>
+        /// Whether similar code blocks should be matched.
+        /// </summary>
+        public bool MatchSimilarConstructs { get; set; }
+
+        /// <summary>
+        /// Automatically insert namespace import directives or remove qualifiers that become redundant after the template is applied.
+        /// </summary>
+        public bool ShortenReferences { get; set; }
+
+        /// <summary>
+        /// String to use as a suppression key.
+        /// By default the following suppression key is used 'CodeTemplate_SomeType_SomeMember',
+        /// where 'SomeType' and 'SomeMember' are names of the associated containing type and member to which this attribute is applied.
+        /// </summary>
+        public string SuppressionKey { get; set; }
+    }
 }
